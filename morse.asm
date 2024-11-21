@@ -43,12 +43,12 @@ Time_OneHundred equ .164 ; 20MHz
 
 
 ;;; the default Morse speed
-DefaultDit = .60                 ; 20 WPM
+DefaultDit = .60                ; 20 WPM
 DefaultDah = .3 * DefaultDit
 DefaultTime equ (DefaultDit + DefaultDah) / .2
 DefaultCharacterTime = .3 * DefaultDit
-DefaultWordTime = 7 * DefaultDit
-MaxDitTime = 240                ; so we do not go out of range (5 WPM)
+DefaultWordTime = .7 * DefaultDit
+MaxDitTime = .240               ; so we do not go out of range (5 WPM)
 MaxDahTime = 3 * MaxDitTime
 
 ;;; PORTA bits
@@ -60,7 +60,7 @@ MorseIn equ .0                  ; RA.0 = Morse code input
 LCD_E equ .7                    ; RB.7 = LCD Enable
 LCD_RW equ .6                   ; RB.6 = LCD R/W
 LCD_RS equ .5                   ; RB.5 = LCD register select
-LCD_BackLight equ .4            ; RB.4 = LCD back ligkt 1=>on, 0=>off
+LCD_BackLight equ .4            ; RB.4 = LCD back light 1=>on, 0=>off
 LCD_BusyBit equ .7              ; msb = LCD busy bit
 LCD_DataMask equ 0x0f           ; RB.0 .. RB.3 = LCD data bus
 LCD_DataInput equ b'00001111'
@@ -76,7 +76,18 @@ LCD_home equ 0x02               ; home cursor
 LCD_increment equ 0x06          ; entry mode
 LCD_off equ 0x08                ; Disable display
 LCD_on equ 0x0e                 ; Enable display
+LCD_CursorAddress equ 0x80      ; cursor address set
+LCD_CursorMask equ 0x7f         ; ..
 
+;;; LCD size
+
+LCD_Width equ .20               ; columns
+LCD_Height equ .4               ; lines
+
+LCD_line_1 equ 0x00             ; offsets into LCD memory
+LCD_line_2 equ 0x40             ; ..
+LCD_line_3 equ 0x14             ; ..
+LCD_line_4 equ 0x54             ; ..
 
 ;;; registers
 
@@ -97,6 +108,11 @@ morse res 2                     ; .=01, -=10
 
 TempByte res 1                  ; DEBUGGING
 
+cursor res 1                    ; soft cursor
+ReadCursor res 1                ; soft cursor
+counter res 1                   ; for scrolling
+read res 1                      ; last char read from LCD
+
 ;;; general constants
 
 BitsPerByte equ .8              ; number of bits in one byte
@@ -108,12 +124,44 @@ ByteLSB equ .0                  ; position of LSB in a byte
 
 reset code 0x0000               ; reset vector
 ;;;  pagesel main                  ; ...
-  goto main                    ; ...
+  goto main                     ; ...
 
 
 INTR71 code 0x0004              ; interrupt vector
   retfie                        ; just return from interrupt
 
+
+  code
+
+;;;* Set the cursor position
+;;;*
+;;;* Inputs
+;;;*   W = cursor address
+;;;* Outputs
+;;;*   none
+
+LCD_SetCursor
+  andlw LCD_CursorMask          ; cursor position
+  addlw -LCD_Width
+  bc LCD_SetCursor_l2
+LCD_SetCursor_l1
+  addlw LCD_Width + LCD_line_1
+  goto LCD_SetCursor_exec
+LCD_SetCursor_l2
+  addlw -LCD_Width
+  bc LCD_SetCursor_l3
+  addlw LCD_Width + LCD_line_2
+  goto LCD_SetCursor_exec
+LCD_SetCursor_l3
+  addlw -LCD_Width
+  bc LCD_SetCursor_l4
+  addlw LCD_Width + LCD_line_3
+  goto LCD_SetCursor_exec
+LCD_SetCursor_l4
+  addlw LCD_line_4
+
+LCD_SetCursor_exec
+   iorlw LCD_CursorAddress      ; cursor position
 
 ;;;* Transmit a byte to the LCD control register
 ;;;*
@@ -122,7 +170,6 @@ INTR71 code 0x0004              ; interrupt vector
 ;;;* Outputs
 ;;;*   none
 
-  code
 LCD_SendControl
 
   movwf temp                    ; save W
@@ -176,15 +223,26 @@ SendToLCD
 ;;;*   none
 
 LCD_SendChar
+  call LCD_SendData
 
+  call LCD_WaitReady
+
+  incf cursor,W
+  xorlw LCD_Height * LCD_Width
+  bz LCD_Scroll
+  incf cursor,F
+  movfw cursor
+  goto LCD_SetCursor
+
+LCD_SendData
   movwf temp                    ; save W
   call LCD_WaitReady
+
   swapf temp,W                  ; get high nibble
   call LCD_SendDataNibble
   movfw temp                    ; get low nibble
 
 LCD_SendDataNibble
-
   bcf PORTB,LCD_E               ; enable off
   bsf PORTB,LCD_RS              ; data register
   bcf PORTB,LCD_RW              ; write
@@ -248,6 +306,103 @@ LCD_WaitReadyLoop
   retlw 0
 
 
+;;;* Read LCD character
+;;;*
+;;;* Inputs
+;;;*   W = cursor
+;;;* Outputs
+;;;*   W = read = character from LCD
+
+LCD_ReadChar
+
+  call LCD_SetCursor
+  call LCD_WaitReady
+
+  bsf PORTB,0
+  bsf PORTB,1
+  bsf PORTB,2
+  bsf PORTB,3
+
+  bsf STATUS,RP0                ; select page 1
+  movlw LCD_DataInput
+  movwf TRISB
+  bcf STATUS,RP0                ; select page 0
+
+  bcf PORTB,LCD_E               ; enable off
+  bsf PORTB,LCD_RS              ; data register
+  bsf PORTB,LCD_RW              ; read
+
+  nop
+  nop
+  bsf PORTB,LCD_E               ; enable on
+  nop
+  nop
+  movfw PORTB                   ; high nibble
+  bcf PORTB,LCD_E               ; enable off
+
+  andlw LCD_DataMask
+  movwf read
+  swapf read,F                  ; save high nibble
+
+  bsf PORTB,LCD_E               ; enable on
+  nop
+  nop
+  movfw PORTB                   ; low nibble
+  bcf PORTB,LCD_E               ; enable off
+  bcf PORTB,LCD_RW              ; write
+
+  andlw LCD_DataMask
+  iorwf read,F                  ; temp = 8 bits read
+
+  bsf STATUS,RP0                ; select page 1
+  movlw LCD_DataOutput
+  movwf TRISB
+  bcf STATUS,RP0                ; select page 0
+
+  movfw read                    ; the character read
+  return
+
+
+;;;* Scroll LCD
+;;;*
+;;;* Inputs
+;;;*   none
+;;;* Outputs
+;;;*   none
+
+LCD_Scroll
+  movlw LCD_Width * (LCD_Height - 1)
+  movwf counter                 ; all but top line
+  movlw LCD_Width               ; start of line 2
+  movwf ReadCursor
+
+LCD_Scroll_loop
+  movfw ReadCursor
+  call LCD_ReadChar
+  movfw ReadCursor
+  addlw -LCD_Width
+  call LCD_SetCursor
+  movfw read
+  call LCD_SendData
+  incf ReadCursor,F
+  decfsz counter,F
+  goto LCD_Scroll_loop
+
+  movlw LCD_Width               ; start of line 2
+  movwf counter
+  movlw LCD_Width * (LCD_Height - 1)
+  call LCD_SetCursor
+LCD_Scroll_blank
+  movlw ' '
+  call LCD_SendData
+  decfsz counter,F
+  goto LCD_Scroll_blank
+
+  movlw LCD_Width * (LCD_Height - 1)
+  movwf cursor
+  goto LCD_SetCursor
+
+
 ;;;* Initialise LCD
 ;;;*
 ;;;* Inputs
@@ -295,6 +450,7 @@ LCD_initialise
 
   call LCD_WaitReady
 
+  clrf cursor                   ; soft cuiror to Home
   retlw 0
 
 
@@ -506,7 +662,7 @@ Increment16 macro _value_
   local done
   incfsz _value_+1,F            ; low byte
   goto done
-  incfsz _value_+0,F            ; low byte
+  incfsz _value_+0,F            ; high byte
   goto done
   movlw 0xff
   movwf _value_+0               ; prevent wrap to zero
@@ -556,10 +712,13 @@ Move16 macro _dest_,_source_
 ;;;*   dest = first byte of two byte value (big endian) dest += source
 
 Add16 macro _dest_,_source_
-  movfw _source_+1
-  addwf _dest_+1                ; low byte
-  movfw _source_+0
-  addwf _dest_+0                ; high byte
+  local nocarry
+  movfw _source_+1              ; low byte
+  addwf _dest_+1,F              ; low byte
+  movfw _source_+0              ; high byte
+  btfsc STATUS,C
+  incf _source_+0,W             ; high byte + 1
+  addwf _dest_+0,F              ; high byte
   endm
 
 
@@ -684,7 +843,8 @@ main
   movlw ' '
   call LCD_SendChar
 
-  bsf PORTB,LCD_BackLight       ; backlight on
+  bsf PORTB,LCD_BackLight        ; backlight on
+
 
 ;;; wait for synchronisation assuming an active low input
 
