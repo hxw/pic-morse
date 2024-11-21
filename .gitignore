@@ -1,0 +1,8 @@
+# .gitignore
+
+*.orig
+*.cod
+*.hex
+*.lst
+*.map
+*~
