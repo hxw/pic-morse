@@ -1,50 +1,61 @@
-  title "serial.asm Display Inverter Security Code Number"
+  title "morse.asm Display Morse code"
 
-  list p=16c71
-
-  include "p16c71.inc"
+  ifdef __16C71
+    include "p16c71.inc"
+  else
+  ifdef __16C84
+    include "p16c84.inc"
+  else
+  ifdef __16F84
+    include "p16f84.inc"
+  else
+    messg "only supports PIC 16C71 nad 16[CF]84"
+  endif
+  endif
+  endif
 
   __fuses _HS_OSC & _WDT_OFF & _CP_ON
 
-; timing parameters
-; system clock = 4MHz  16MHz  20MHz
-; cycle time   = 1uS  250ns  200nS
-CPU_ClockMHz equ 16
+  radix dec
+
+;;; timing parameters
+;;; system clock = 4MHz  16MHz  20MHz
+;;; cycle time   = 1uS  250ns  200nS
+CPU_ClockMHz equ .16
 
 
-; for 100uS delay
-; delay 7+3n cycles (including call)
+;;; for 100uS delay
+;;; delay 7+3n cycles (including call)
 
-  if CPU_ClockMHz == 4
-Time_OneHundred equ 31  ; 4MHz
+  if CPU_ClockMHz == .4
+Time_OneHundred equ .31  ; 4MHz
   else
-  if CPU_ClockMHz == 16
-Time_OneHundred equ 131 ; 16MHz
+  if CPU_ClockMHz == .16
+Time_OneHundred equ .131 ; 16MHz
   else
-  if CPU_ClockMHz == 20
-Time_OneHundred equ 164 ; 20MHz
+  if CPU_ClockMHz == .20
+Time_OneHundred equ .164 ; 20MHz
   else
-    messg unsupported clock frequency
+    messg "unsupported clock frequency"
   endif
   endif
   endif
 
 
-;the default Morse speed
-;DefaultDit = 120
-DefaultDit = 60                 ; 20 WPM
-DefaultDah = 3 * DefaultDit
-DefaultTime equ (DefaultDit + DefaultDah) / 2
-DefaultCharacterTime = 3 * DefaultDit
-DefaultWordTime = 5 * DefaultDit
+;;; the default Morse speed
+DefaultDit = .60                 ; 20 WPM
+DefaultDah = .3 * DefaultDit
+DefaultTime equ (DefaultDit + DefaultDah) / .2
+DefaultCharacterTime = .3 * DefaultDit
+DefaultWordTime = 7 * DefaultDit
 MaxDitTime = 240                ; so we do not go out of range (5 WPM)
 MaxDahTime = 3 * MaxDitTime
 
-; PORTA bits
+;;; PORTA bits
 
 MorseIn equ .0                  ; RA.0 = Morse code input
 
-; PORTB bits
+;;; PORTB bits
 
 LCD_E equ .7                    ; RB.7 = LCD Enable
 LCD_RW equ .6                   ; RB.6 = LCD R/W
@@ -55,7 +66,7 @@ LCD_DataMask equ 0x0f           ; RB.0 .. RB.3 = LCD data bus
 LCD_DataInput equ b'00001111'
 LCD_DataOutput equ b'00000000'
 
-; LCD commands
+;;; LCD commands
 
 LCD_PowerOn equ 0x33            ; Power on configuration
 LCD_4BitMode1 equ 0x22          ; configure to 4 bit bus
@@ -67,9 +78,10 @@ LCD_off equ 0x08                ; Disable display
 LCD_on equ 0x0e                 ; Enable display
 
 
-; registers
+;;; registers
 
-  org h'0c'
+;;;  org 0x0c
+  udata 0x0c
 
 temp res 1                      ; used by LCD Send routines
 TempNibble res 1                ; used by LCD Send routines
@@ -84,30 +96,33 @@ DahTime res 2                   ; for autocalibration
 morse res 2                     ; .=01, -=10
 
 TempByte res 1                  ; DEBUGGING
-; general constants
+
+;;; general constants
 
 BitsPerByte equ .8              ; number of bits in one byte
 ByteMSB equ .7                  ; position of MSB in a byte
 ByteLSB equ .0                  ; position of LSB in a byte
 
 
-;* Reset and Interrupt vectors
+;;;* Reset and Interrupt vectors
 
-  org 0                         ; reset vector
-  goto main                     ; ...
+reset code 0x0000               ; reset vector
+;;;  pagesel main                  ; ...
+  goto main                    ; ...
 
-INTR71 equ 4
-  org INTR71                    ; interrupt vector
+
+INTR71 code 0x0004              ; interrupt vector
   retfie                        ; just return from interrupt
 
 
-;* Transmit a byte to the LCD control register
-;*
-;* Inputs
-;*   W = byte to send
-;* Outputs
-;*   none
+;;;* Transmit a byte to the LCD control register
+;;;*
+;;;* Inputs
+;;;*   W = byte to send
+;;;* Outputs
+;;;*   none
 
+  code
 LCD_SendControl
 
   movwf temp                    ; save W
@@ -153,12 +168,12 @@ SendToLCD
 
   retlw 0
 
-;* Transmit a byte to the LCD data register
-;*
-;* Inputs
-;*   W = byte to send
-;* Outputs
-;*   none
+;;;* Transmit a byte to the LCD data register
+;;;*
+;;;* Inputs
+;;;*   W = byte to send
+;;;* Outputs
+;;;*   none
 
 LCD_SendChar
 
@@ -176,12 +191,12 @@ LCD_SendDataNibble
   goto SendToLCD
 
 
-;* Wait LCD ready
-;*
-;* Inputs
-;*   none
-;* Outputs
-;*   none
+;;;* Wait LCD ready
+;;;*
+;;;* Inputs
+;;;*   none
+;;;* Outputs
+;;;*   none
 
 LCD_WaitReady
 
@@ -211,7 +226,7 @@ LCD_WaitReadyLoop
 
   andlw LCD_DataMask
   movwf TempNibble
-  swapf TempNibble              ; save high nibble
+  swapf TempNibble,F            ; save high nibble
 
   bsf PORTB,LCD_E               ; enable on
   nop
@@ -221,7 +236,7 @@ LCD_WaitReadyLoop
   bcf PORTB,LCD_RW              ; write
 
   andlw LCD_DataMask
-  iorwf TempNibble              ; temp = 8 bits read
+  iorwf TempNibble,F            ; temp = 8 bits read
   btfsc TempNibble,LCD_BusyBit; busy is active high
   goto LCD_WaitReadyLoop
 
@@ -233,28 +248,28 @@ LCD_WaitReadyLoop
   retlw 0
 
 
-;* Initialise LCD
-;*
-;* Inputs
-;*   none
-;* Outputs
-;*   none
+;;;* Initialise LCD
+;;;*
+;;;* Inputs
+;;;*   none
+;;;* Outputs
+;;;*   none
 
 LCD_initialise
 
-  movlw 250                     ; milliseconds
+  movlw .250                    ; milliseconds
   call Delay
 
   movlw LCD_PowerOn             ; Power on configuration
   call LCD_SendControlNibble
 
-  movlw 10                      ; milliseconds
+  movlw .10                     ; milliseconds
   call Delay
 
   movlw LCD_PowerOn             ; Power on configuration
   call LCD_SendControlNibble
 
-  movlw 5                       ; milliseconds
+  movlw .5                      ; milliseconds
   call Delay
 
   movlw LCD_PowerOn             ; Power on configuration
@@ -283,18 +298,18 @@ LCD_initialise
   retlw 0
 
 
-;* Timing delays
-;*
-;* Inputs
-;*   W = milliseconds to delay
-;* Outputs
-;*   none
+;;;* Timing delays
+;;;*
+;;;* Inputs
+;;;*   W = milliseconds to delay
+;;;* Outputs
+;;;*   none
 
 Delay
   movwf DelayCount1
 DelayLoop
   call DelayOneMillisecond
-  decfsz DelayCount1            ; (1/2)
+  decfsz DelayCount1,F          ; (1/2)
   goto DelayLoop                ; (2)
   retlw 0
 
@@ -325,17 +340,17 @@ DelayMicro
   movwf DelayCount2             ; (1)
 
 DelayMicroLoop
-  decfsz DelayCount2            ; (1/2)
+  decfsz DelayCount2,F          ; (1/2)
   goto DelayMicroLoop           ; (2)
   retlw 0                       ; (2)
 
 
-  ;* Print one byte in hex
-;*
-;* Inputs
-;*   W = byte to print
-;* Outputs
-;*   none
+;;;* Print one byte in hex
+;;;*
+;;;* Inputs
+;;;*   W = byte to print
+;;;* Outputs
+;;;*   none
 
 Hex_PrintByte
   movwf TempByte        ; byte to output
@@ -354,7 +369,7 @@ Hex_PrintNibble
 
 Hex_table
   andlw 0x0f            ; extract nibble
-  addwf PCL             ; computed goto
+  addwf PCL,F           ; computed goto
   retlw '0'
   retlw '1'
   retlw '2'
@@ -377,16 +392,16 @@ Hex_TableEnd
   endif
 
 
-;* Macro to compare a 16 bit value
-;*
-;* Inputs
-;*   value1 = first byte of two byte value (big endian)
-;*   value2 = first byte of two byte value (big endian)
-;* Outputs
-;*   W = used
-;*   less = branch to here if value1 < value2
-;*   greater = branch to here if value1 > value2
-;*   . = execute in-line if values are equal
+;;;* Macro to compare a 16 bit value
+;;;*
+;;;* Inputs
+;;;*   value1 = first byte of two byte value (big endian)
+;;;*   value2 = first byte of two byte value (big endian)
+;;;* Outputs
+;;;*   W = used
+;;;*   less = branch to here if value1 < value2
+;;;*   greater = branch to here if value1 > value2
+;;;*   . = execute in-line if values are equal
 
 Compare16 macro _value1_,_value2_,_less_,_greater_
   movfw _value1_+0
@@ -400,20 +415,20 @@ Compare16 macro _value1_,_value2_,_less_,_greater_
   endm
 
 
-;* Macro to compare a 16 bit value
-;*
-;* Inputs
-;*   value = first byte of two byte value (big endian)
-;*   lit = 16 bit constant value
-;* Outputs
-;*   W = used
-;*   less = branch to here if value1 < value2
-;*   greater = branch to here if value1 > value2
-;*   . = execute in-line if values are equal
+;;;* Macro to compare a 16 bit value
+;;;*
+;;;* Inputs
+;;;*   value = first byte of two byte value (big endian)
+;;;*   lit = 16 bit constant value
+;;;* Outputs
+;;;*   W = used
+;;;*   less = branch to here if value1 < value2
+;;;*   greater = branch to here if value1 > value2
+;;;*   . = execute in-line if values are equal
 
 CompareLit16 macro _value_,_lit_,_less_,_greater_
   movfw _value_+0
-  sublw (_lit_ >> 8) & 0xff     ; High:  value2 - value1
+  sublw (_lit_ >> .8) & 0xff     ; High:  value2 - value1
   bnc _greater_
   bnz _less_
   movfw _value_+1
@@ -423,20 +438,20 @@ CompareLit16 macro _value_,_lit_,_less_,_greater_
   endm
 
 
-;* Macro to compare a 16 bit Morse value value for equality
-;*
-;* Inputs
-;*   value = first byte of two byte value (big endian)
-;*   lit = 16 bit constant value
-;*   code = 8 bit value to return
-;* Outputs
-;*   W = retlw code if equal
-;*   . = execute in-line if values are not equal
+;;;* Macro to compare a 16 bit Morse value value for equality
+;;;*
+;;;* Inputs
+;;;*   value = first byte of two byte value (big endian)
+;;;*   lit = 16 bit constant value
+;;;*   code = 8 bit value to return
+;;;* Outputs
+;;;*   W = retlw code if equal
+;;;*   . = execute in-line if values are not equal
 
 Morse16 macro _value_,_lit_,_code_
   local done
   movfw _value_+0
-  sublw (_lit_ >> 8) & 0xff     ; High:  value2 - value1
+  sublw (_lit_ >> .8) & 0xff     ; High:  value2 - value1
   bnz done
   movfw _value_+1
   sublw _lit_ & 0xff            ; Low:   value2 - value1
@@ -446,52 +461,52 @@ done
   endm
 
 
-;* Macro to add a Morse token to 16 bit Morse
-;*
-;* Inputs
-;*   value = first byte of two byte value (big endian)
-;* Outputs
-;*   W = retlw code if equal
+;;;* Macro to add a Morse token to 16 bit Morse
+;;;*
+;;;* Inputs
+;;;*   value = first byte of two byte value (big endian)
+;;;* Outputs
+;;;*   W = retlw code if equal
 
 Dah16 macro _value_
   setc
-  rlf _value_+1
-  rlf _value_+0
+  rlf _value_+1,F
+  rlf _value_+0,F
   clrc
-  rlf _value_+1
-  rlf _value_+0
+  rlf _value_+1,F
+  rlf _value_+0,F
   endm
 
 
-;* Macro to add a Morse token to 16 bit Morse
-;*
-;* Inputs
-;*   value = first byte of two byte value (big endian)
-;* Outputs
-;*   W = retlw code if equal
+;;;* Macro to add a Morse token to 16 bit Morse
+;;;*
+;;;* Inputs
+;;;*   value = first byte of two byte value (big endian)
+;;;* Outputs
+;;;*   W = retlw code if equal
 
 Dit16 macro _value_
   clrc
-  rlf _value_+1
-  rlf _value_+0
+  rlf _value_+1,F
+  rlf _value_+0,F
   setc
-  rlf _value_+1
-  rlf _value_+0
+  rlf _value_+1,F
+  rlf _value_+0,F
   endm
 
 
-;* Macro to increment a 16 bit value
-;*
-;* Inputs
-;*   value = first byte of two byte value (big endian) to increment
-;* Outputs
-;*   value = value + 1
+;;;* Macro to increment a 16 bit value
+;;;*
+;;;* Inputs
+;;;*   value = first byte of two byte value (big endian) to increment
+;;;* Outputs
+;;;*   value = value + 1
 
 Increment16 macro _value_
   local done
-  incfsz _value_+1              ; low byte
+  incfsz _value_+1,F            ; low byte
   goto done
-  incfsz _value_+0              ; low byte
+  incfsz _value_+0,F            ; low byte
   goto done
   movlw 0xff
   movwf _value_+0               ; prevent wrap to zero
@@ -500,29 +515,29 @@ done
   endm
 
 
-;* Macro to initialise a 16 bit value
-;*
-;* Inputs
-;*   init = constant 16 bit number
-;* Outputs
-;*   W = used
-;*   value = first byte of two byte value (big endian) to init
+;;;* Macro to initialise a 16 bit value
+;;;*
+;;;* Inputs
+;;;*   init = constant 16 bit number
+;;;* Outputs
+;;;*   W = used
+;;;*   value = first byte of two byte value (big endian) to init
 
 Set16 macro _value_,_init_
-  movlw (_init_ >> 8) & 0xff
+  movlw (_init_ >> .8) & 0xff
   movwf _value_+0               ; high byte
   movlw _init_ & 0xff
   movwf _value_+1               ; low byte
   endm
 
 
-;* Macro to copy a 16 bit value
-;*
-;* Inputs
-;*   source = first byte of two byte value (big endian) used as input value
-;* Outputs
-;*   W = used
-;*   dest = first byte of two byte value (big endian)
+;;;* Macro to copy a 16 bit value
+;;;*
+;;;* Inputs
+;;;*   source = first byte of two byte value (big endian) used as input value
+;;;* Outputs
+;;;*   W = used
+;;;*   dest = first byte of two byte value (big endian)
 
 Move16 macro _dest_,_source_
   movfw _source_+0
@@ -532,13 +547,13 @@ Move16 macro _dest_,_source_
   endm
 
 
-;* Macro to add a 16 bit value
-;*
-;* Inputs
-;*   source = first byte of two byte value (big endian) used as input value
-;* Outputs
-;*   W = used
-;*   dest = first byte of two byte value (big endian) dest += source
+;;;* Macro to add a 16 bit value
+;;;*
+;;;* Inputs
+;;;*   source = first byte of two byte value (big endian) used as input value
+;;;* Outputs
+;;;*   W = used
+;;;*   dest = first byte of two byte value (big endian) dest += source
 
 Add16 macro _dest_,_source_
   movfw _source_+1
@@ -548,12 +563,12 @@ Add16 macro _dest_,_source_
   endm
 
 
-;* Macro to Shift Right a 16 bit unsigned value
-;*
-;* Inputs
-;*   value = first byte of two byte value (big endian)
-;* Outputs
-;*   value <<= 1 (unsigned)
+;;;* Macro to Shift Right a 16 bit unsigned value
+;;;*
+;;;* Inputs
+;;;*   value = first byte of two byte value (big endian)
+;;;* Outputs
+;;;*   value <<= 1 (unsigned)
 
 Shr16 macro _value_
   clrc
@@ -563,12 +578,12 @@ Shr16 macro _value_
 
 
 
-;* Morse to ASCII
-;*
-;* Inputs
-;*   morse = 16 bit morse value
-;* Outputs
-;*   W = ASCII value
+;;;* Morse to ASCII
+;;;*
+;;;* Inputs
+;;;*   morse = 16 bit morse value
+;;;* Outputs
+;;;*   W = ASCII value
 
 MorseToASCII                    ; .=01 -=10
   Morse16 morse,b'0110','A'
@@ -616,17 +631,18 @@ MorseToASCII                    ; .=01 -=10
   retlw '~'                     ; unassigned code
 
 
-;* Main program
-;*
-;* Inputs
-;*   none
-;* Outputs
-;*   none
+;;;* Main program
+;;;*
+;;;* Inputs
+;;;*   none
+;;;* Outputs
+;;;*   none
 
 main
 
+  banksel temp
   clrw                          ; set W = 0
-;  clrf FlagBits                ; reset all system flags
+;;;  clrf FlagBits                ; reset all system flags
 
   Set16 AverageTime,DefaultTime ; set inital rate
   Set16 WordSeparatorTime,DefaultWordTime
@@ -638,8 +654,11 @@ main
 
   movlw b'11111111'             ; Port A as all input
   movwf TRISA
+
+  ifdef __16C71
   movlw b'00000011'             ; Port A as digital input
   movwf ADCON1
+  endif
 
   movlw LCD_DataOutput          ; configure Port B
   movwf TRISB
@@ -650,7 +669,7 @@ main
 
   call LCD_initialise
 
-; print a title
+;;; print a title
 
   movlw 'M'
   call LCD_SendChar
@@ -667,7 +686,7 @@ main
 
   bsf PORTB,LCD_BackLight       ; backlight on
 
-; wait for synchronisation assuming an active low input
+;;; wait for synchronisation assuming an active low input
 
 WaitPulse
 WaitLow
@@ -707,21 +726,21 @@ PrintDot
 
 PrintChar
   call LCD_SendChar
-;  movfw PulseTime+0
-;  call Hex_PrintByte
-;  movfw PulseTime+1
-;  call Hex_PrintByte
+;;;  movfw PulseTime+0
+;;;  call Hex_PrintByte
+;;;  movfw PulseTime+1
+;;;  call Hex_PrintByte
 
 Recalibrate
-;  Move16 PulseTime,DitTime
-;  Add16 PulseTime, DahTime      ; dit * 4
-;  Shr16 PulseTime
-;  Move16 AverageTime,PulseTime  ; dit * 2
-;  Shr16 PulseTime               ; dit * 1
-;  Move16 CharSeparatorTime,PulseTime
-;  Add16 CharSeparatorTime,AverageTime; dit * 3
-;  Move16 WordSeparatorTime,CharSeparatorTime
-;  Add16 WordSeparatorTime,AverageTime; dit * 5
+;;;  Move16 PulseTime,DitTime
+;;;  Add16 PulseTime, DahTime      ; dit * 4
+;;;  Shr16 PulseTime
+;;;  Move16 AverageTime,PulseTime  ; dit * 2
+;;;  Shr16 PulseTime               ; dit * 1
+;;;  Move16 CharSeparatorTime,PulseTime
+;;;  Add16 CharSeparatorTime,AverageTime; dit * 3
+;;;  Move16 WordSeparatorTime,CharSeparatorTime
+;;;  Add16 WordSeparatorTime,AverageTime; dit * 5
 
   Set16 PulseTime,0
 CheckSpaceTime
@@ -748,17 +767,19 @@ PrintWordSeparator
   goto WaitPulse
 
 
-; hold backlight on for a time
+;;; hold backlight on for a time
 
 BackLightHold
-  movlw 30*4
-  movlw 250                     ; 1/4 second delay
+  movlw .30*.4
+  movfw temp
+BackLightHold1
+  movlw .250                     ; 1/4 second delay
   call Delay
-  decfsz temp
-  goto BackLightHold
+  decfsz temp,F
+  goto BackLightHold1
   bcf PORTB,LCD_BackLight; backlight off
 
-; lock up - reset to initiate next cycle
+;;; lock up - reset to initiate next cycle
 
 DynamicStop
   goto DynamicStop
