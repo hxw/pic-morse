@@ -17,21 +17,21 @@ clean:
 
 .PHONY: read
 read:
-	picprog --ihx16 --slow --reboot --pic-serial-port="${TTY}" --output-hexfile=dump.hex
+	picprog --device="${PROCESSOR}" --ihx16 --slow --reboot --pic-serial-port="${TTY}" --output-hexfile=dump.hex
 
 .PHONY: erase
 erase:
-	picprog --ihx16 --slow --reboot --pic-serial-port="${TTY}" --erase --burn
+	picprog --device="${PROCESSOR}" --ihx16 --slow --reboot --pic-serial-port="${TTY}" --erase --burn
 
 .PHONY: burn
-burn:
-	picprog --ihx16 --slow --reboot --pic-serial-port="${TTY}" --input-hexfile=morse.hex --burn
+burn: morse.hex
+	picprog --device="${PROCESSOR}" --ihx16 --slow --reboot --pic-serial-port="${TTY}" --input-hexfile=morse.hex --burn
 
 
 .SUFFIXES: .asm .inc .hex
 
 .asm.o:
-	gpasm --processor="${PROCESSOR}" --object --output="${.PREFIX}" ${.ALLSRC}
+	gpasm --processor="${PROCESSOR}" --object --strict=2 --output="${.PREFIX}" ${.ALLSRC}
 
 .o.hex:
 	gplink --map --hex-format=inhx16 --output="${.TARGET}" ${.ALLSRC}

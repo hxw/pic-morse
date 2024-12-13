@@ -2,21 +2,20 @@
 
   ifdef __16C71
     include "p16c71.inc"
-  else
-  ifdef __16C84
+  elifdef __16C84
     include "p16c84.inc"
-  else
-  ifdef __16F84
+  elifdef __16F84
     include "p16f84.inc"
   else
     messg "only supports PIC 16C71 nad 16[CF]84"
   endif
-  endif
-  endif
 
   __fuses _HS_OSC & _WDT_OFF & _CP_ON
 
+  list
+  expand
   radix dec
+  assume 0                      ; assume in bank 0
 
 ;;; timing parameters
 ;;; system clock = 4MHz  16MHz  20MHz
@@ -28,28 +27,28 @@ CPU_ClockMHz equ .16
 ;;; delay 7+3n cycles (including call)
 
   if CPU_ClockMHz == .4
-Time_OneHundred equ .31  ; 4MHz
-  else
-  if CPU_ClockMHz == .16
-Time_OneHundred equ .131 ; 16MHz
-  else
-  if CPU_ClockMHz == .20
-Time_OneHundred equ .164 ; 20MHz
+Time_OneHundred equ .31         ; 4MHz
+  elif CPU_ClockMHz == .16
+Time_OneHundred equ .131        ; 16MHz
+  elif CPU_ClockMHz == .20
+Time_OneHundred equ .164        ; 20MHz
   else
     messg "unsupported clock frequency"
   endif
-  endif
-  endif
+
+;;; debugging
+Debug equ .0                    ; set to .1 for debug prints
 
 
 ;;; the default Morse speed
-DefaultDit = .60                ; 20 WPM
-DefaultDah = .3 * DefaultDit
+DefaultDit equ .60              ; 60 ms = 20 WPM (based on PARIS timing)
+DefaultDah equ .3 * DefaultDit  ; - = 3 * .
 DefaultTime equ (DefaultDit + DefaultDah) / .2
-DefaultCharacterTime = .3 * DefaultDit
-DefaultWordTime = .7 * DefaultDit
-MaxDitTime = .240               ; so we do not go out of range (5 WPM)
-MaxDahTime = 3 * MaxDitTime
+DefaultCharacterTime equ .3 * DefaultDit
+DefaultWordTime equ .7 * DefaultDit
+MaxDitTime equ .240             ; so we do not go out of range (5 WPM)
+MaxDahTime equ .3 * MaxDitTime  ; ..
+debounce equ .10                ; milliseconds
 
 ;;; PORTA bits
 
@@ -122,8 +121,8 @@ ByteLSB equ .0                  ; position of LSB in a byte
 
 ;;;* Reset and Interrupt vectors
 
-reset code 0x0000               ; reset vector
-;;;  pagesel main                  ; ...
+reset code 0x0000             ; reset vector
+;;;  pagesel main                ;  ; ...
   goto main                     ; ...
 
 
@@ -263,10 +262,10 @@ LCD_WaitReady
   bsf PORTB,2
   bsf PORTB,3
 
-  bsf STATUS,RP0                ; select page 1
+  banksel TRISB                 ; select page 1
   movlw LCD_DataInput
   movwf TRISB
-  bcf STATUS,RP0                ; select page 0
+  banksel PORTB                 ; select page 0
 
 LCD_WaitReadyLoop
 
@@ -295,13 +294,13 @@ LCD_WaitReadyLoop
 
   andlw LCD_DataMask
   iorwf TempNibble,F            ; temp = 8 bits read
-  btfsc TempNibble,LCD_BusyBit; busy is active high
+  btfsc TempNibble,LCD_BusyBit  ; busy is active high
   goto LCD_WaitReadyLoop
 
-  bsf STATUS,RP0                ; select page 1
+  banksel TRISB                 ; select page 1
   movlw LCD_DataOutput
   movwf TRISB
-  bcf STATUS,RP0                ; select page 0
+  banksel PORTB                 ; select page 0
 
   retlw 0
 
@@ -323,10 +322,12 @@ LCD_ReadChar
   bsf PORTB,2
   bsf PORTB,3
 
-  bsf STATUS,RP0                ; select page 1
+  banksel TRISB                 ; select page 1
+
   movlw LCD_DataInput
   movwf TRISB
-  bcf STATUS,RP0                ; select page 0
+
+  banksel PORTB                 ; select page 0
 
   bcf PORTB,LCD_E               ; enable off
   bsf PORTB,LCD_RS              ; data register
@@ -354,10 +355,12 @@ LCD_ReadChar
   andlw LCD_DataMask
   iorwf read,F                  ; temp = 8 bits read
 
-  bsf STATUS,RP0                ; select page 1
+  banksel TRISB                 ; select page 1
+
   movlw LCD_DataOutput
   movwf TRISB
-  bcf STATUS,RP0                ; select page 0
+
+  banksel PORTB                 ; select page 0
 
   movfw read                    ; the character read
   return
@@ -471,30 +474,28 @@ DelayLoop
 
 
 DelayOneMillisecond             ; delay 7+3n cycles (including call)
-
-  movlw Time_OneHundred         ; (1) 100uS
+  movlw Time_OneHundred         ; (1) 100uS  1
   call DelayMicro               ; (2)
-  movlw Time_OneHundred         ; (1) 100uS
+  movlw Time_OneHundred         ; (1) 100uS  2
   call DelayMicro               ; (2)
-  movlw Time_OneHundred         ; (1) 100uS
+  movlw Time_OneHundred         ; (1) 100uS  3
   call DelayMicro               ; (2)
-  movlw Time_OneHundred         ; (1) 100uS
+  movlw Time_OneHundred         ; (1) 100uS  4
   call DelayMicro               ; (2)
-  movlw Time_OneHundred         ; (1) 100uS
+  movlw Time_OneHundred         ; (1) 100uS  5
   call DelayMicro               ; (2)
-  movlw Time_OneHundred         ; (1) 100uS
+  movlw Time_OneHundred         ; (1) 100uS  6
   call DelayMicro               ; (2)
-  movlw Time_OneHundred         ; (1) 100uS
+  movlw Time_OneHundred         ; (1) 100uS  7
   call DelayMicro               ; (2)
-  movlw Time_OneHundred         ; (1) 100uS
+  movlw Time_OneHundred         ; (1) 100uS  8
   call DelayMicro               ; (2)
-  movlw Time_OneHundred         ; (1) 100uS
+  movlw Time_OneHundred         ; (1) 100uS  9
   call DelayMicro               ; (2)
+  movlw Time_OneHundred         ; (1) 100uS 10
 
 DelayMicro
-
   movwf DelayCount2             ; (1)
-
 DelayMicroLoop
   decfsz DelayCount2,F          ; (1/2)
   goto DelayMicroLoop           ; (2)
@@ -509,23 +510,22 @@ DelayMicroLoop
 ;;;*   none
 
 Hex_PrintByte
-  movwf TempByte        ; byte to output
-  swapf TempByte,W      ; high nibble
+  movwf TempByte                ; byte to output
+  swapf TempByte,W              ; high nibble
 
   call Hex_PrintNibble
 
-  movfw TempByte        ; low nibble
+  movfw TempByte                ; low nibble
 
 Hex_PrintNibble
-
   call Hex_table
   call LCD_SendChar
   retlw 0
 
 
 Hex_table
-  andlw 0x0f            ; extract nibble
-  addwf PCL,F           ; computed goto
+  andlw 0x0f                    ; extract nibble
+  addwf PCL,F                   ; computed goto
   retlw '0'
   retlw '1'
   retlw '2'
@@ -584,7 +584,7 @@ Compare16 macro _value1_,_value2_,_less_,_greater_
 
 CompareLit16 macro _value_,_lit_,_less_,_greater_
   movfw _value_+0
-  sublw (_lit_ >> .8) & 0xff     ; High:  value2 - value1
+  sublw (_lit_ >> .8) & 0xff    ; High:  value2 - value1
   bnc _greater_
   bnz _less_
   movfw _value_+1
@@ -607,7 +607,7 @@ CompareLit16 macro _value_,_lit_,_less_,_greater_
 Morse16 macro _value_,_lit_,_code_
   local done
   movfw _value_+0
-  sublw (_lit_ >> .8) & 0xff     ; High:  value2 - value1
+  sublw (_lit_ >> .8) & 0xff    ; High:  value2 - value1
   bnz done
   movfw _value_+1
   sublw _lit_ & 0xff            ; Low:   value2 - value1
@@ -736,7 +736,6 @@ Shr16 macro _value_
   endm
 
 
-
 ;;;* Morse to ASCII
 ;;;*
 ;;;* Inputs
@@ -787,6 +786,15 @@ MorseToASCII                    ; .=01 -=10
   Morse16 morse,b'101001011010',','
   Morse16 morse,b'1001011001','/'
   Morse16 morse,b'010110100101','?'
+  Morse16 morse,b'0110010101','&'
+  Morse16 morse,b'011010101001','\''
+  Morse16 morse,b'011010011001','@'
+  Morse16 morse,b'100110100110','('
+  Morse16 morse,b'1001101001',')'
+  Morse16 morse,b'101010010101',':'
+  Morse16 morse,b'1001010110','='
+  Morse16 morse,b'100110011010','!'
+  Morse16 morse,b'011001011001','\"'
   retlw '~'                     ; unassigned code
 
 
@@ -799,22 +807,23 @@ MorseToASCII                    ; .=01 -=10
 
 main
 
-  banksel temp
+  banksel temp                  ; select bank 0
+
   clrw                          ; set W = 0
-;;;  clrf FlagBits                ; reset all system flags
+;;;  clrf FlagBits              ; reset all system flags
 
   Set16 AverageTime,DefaultTime ; set inital rate
   Set16 WordSeparatorTime,DefaultWordTime
   Set16 CharSeparatorTime,DefaultCharacterTime
-  Set16 morse,0
+  Set16 morse,0                 ; clear the morse accumulator
 
-  bsf STATUS,RP0                ; select page 1
-  bcf STATUS,RP1                ; ...
+  banksel TRISA                 ; select bank 1
 
   movlw b'11111111'             ; Port A as all input
   movwf TRISA
 
   ifdef __16C71
+  banksel ADCON1
   movlw b'00000011'             ; Port A as digital input
   movwf ADCON1
   endif
@@ -822,7 +831,7 @@ main
   movlw LCD_DataOutput          ; configure Port B
   movwf TRISB
 
-  bcf STATUS,RP0                ; select page 0
+  banksel temp                  ; select bank 0
 
   clrf PORTB                    ; set all Port B low
 
@@ -843,20 +852,38 @@ main
   movlw ' '
   call LCD_SendChar
 
-  bsf PORTB,LCD_BackLight        ; backlight on
+  bsf PORTB,LCD_BackLight       ; backlight on
 
 
 ;;; wait for synchronisation assuming an active low input
 
+;; WaitPulse
+;; WaitLow
+;;   btfsc PORTA,MorseIn
+;;   goto WaitLow
+;;   call DelayOneMillisecond
+;;   btfsc PORTA,MorseIn
+;;   goto WaitLow
+
+;;   Set16 PulseTime,1
+;; WaitHigh
+;;   call DelayOneMillisecond
+;;   Increment16 PulseTime
+;;   btfss PORTA,MorseIn
+;;   goto WaitHigh
+
+
 WaitPulse
 WaitLow
-  btfsc PORTA,MorseIn
-  goto WaitLow
-  call DelayOneMillisecond
+  btfsc PORTA,MorseIn           ; active low input
+  goto WaitLow                  ; ..
+  movlw debounce                ; debounce time
+  call Delay                    ; ..
   btfsc PORTA,MorseIn
   goto WaitLow
 
-  Set16 PulseTime,1
+  Set16 PulseTime,debounce
+
 WaitHigh
   call DelayOneMillisecond
   Increment16 PulseTime
@@ -884,14 +911,17 @@ PrintDot
   Dit16 morse
   movlw '.'
 
-PrintChar
+PrintChar                       ; display '.' or '-'
   call LCD_SendChar
-;;;  movfw PulseTime+0
-;;;  call Hex_PrintByte
-;;;  movfw PulseTime+1
-;;;  call Hex_PrintByte
 
-Recalibrate
+  if Debug                      ; display the pulse time
+  movfw PulseTime+0
+  call Hex_PrintByte
+  movfw PulseTime+1
+  call Hex_PrintByte
+  endif
+
+;;;Recalibrate
 ;;;  Move16 PulseTime,DitTime
 ;;;  Add16 PulseTime, DahTime      ; dit * 4
 ;;;  Shr16 PulseTime
@@ -900,25 +930,29 @@ Recalibrate
 ;;;  Move16 CharSeparatorTime,PulseTime
 ;;;  Add16 CharSeparatorTime,AverageTime; dit * 3
 ;;;  Move16 WordSeparatorTime,CharSeparatorTime
-;;;  Add16 WordSeparatorTime,AverageTime; dit * 5
+;;;  Add16 WordSeparatorTime,AverageTime; dit * 7
 
-  Set16 PulseTime,0
+  movlw debounce                ; debounce return to high
+  call Delay
+  Set16 PulseTime,debounce
 CheckSpaceTime
   call DelayOneMillisecond
   Increment16 PulseTime
   Compare16 PulseTime,WordSeparatorTime,CheckSpaceTime_ok,PrintWordSeparator
+
 CheckSpaceTime_ok
-  btfsc PORTA,MorseIn
-  goto CheckSpaceTime
+  btfsc PORTA,MorseIn           ; check if key goes down again
+  goto CheckSpaceTime           ; key is still released
+
   Compare16 PulseTime,CharSeparatorTime,WaitPulse,PrintCharSeparator
 
-PrintCharSeparator
+PrintCharSeparator              ; just output the character
   call MorseToASCII
   call LCD_SendChar
   Set16 morse,0
   goto WaitPulse
 
-PrintWordSeparator
+PrintWordSeparator              ; output the character followed by space
   call MorseToASCII
   call LCD_SendChar
   movlw ' '
@@ -933,11 +967,11 @@ BackLightHold
   movlw .30*.4
   movfw temp
 BackLightHold1
-  movlw .250                     ; 1/4 second delay
+  movlw .250                    ; 1/4 second delay
   call Delay
   decfsz temp,F
   goto BackLightHold1
-  bcf PORTB,LCD_BackLight; backlight off
+  bcf PORTB,LCD_BackLight       ; backlight off
 
 ;;; lock up - reset to initiate next cycle
 
